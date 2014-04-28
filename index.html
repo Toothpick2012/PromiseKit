@@ -29,9 +29,9 @@
       <section>
         <p>Modern development is highly asynchronous: isn’t it about time iOS developers had tools that made programming asynchronously powerful, easy and delightful?</p>
 
-<p>PromiseKit is not just a Promises implementation, it is also a collection of helper functions that make the typical asynchronous patterns we use in iOS development delightful <em>too</em>.</p>
+<p>PromiseKit is not just a <a href="http://wikipedia.org/wiki/Promise_%28programming%29">Promises</a> implementation, it is also a collection of helper functions that make the typical asynchronous patterns we use in iOS development delightful <em>too</em>.</p>
 
-<p>PromiseKit is also designed to be integrated into other CocoaPods. If your library has asynchronous operations and you like PromiseKit, then add an opt-in subspec that provides Promises for your users. Documentation to help you integrate PromiseKit into your own pods is provided later in this README.</p>
+<p>PromiseKit is also designed to be integrated into other CocoaPods. If your library has asynchronous operations and you like PromiseKit, then add an opt-in subspec that provides Promises for your users. Documentation to help you integrate PromiseKit into your own pods is provided later in this guide.</p>
 
 <h1>
 <a name="importing-promisekit" class="anchor" href="#importing-promisekit"><span class="octicon octicon-link"></span></a>Importing PromiseKit</h1>
@@ -51,6 +51,7 @@
 <div class="highlight highlight-ruby"><pre><span class="n">pod</span> <span class="s1">'PromiseKit/Foundation'</span>
 <span class="n">pod</span> <span class="s1">'PromiseKit/UIKit'</span>
 <span class="n">pod</span> <span class="s1">'PromiseKit/CoreLocation'</span>
+<span class="n">pod</span> <span class="s1">'PromiseKit/MapKit'</span>
 </pre></div>
 
 <h1>
@@ -101,20 +102,29 @@
 <h2>
 <a name="explaining-that-promise-code" class="anchor" href="#explaining-that-promise-code"><span class="octicon octicon-link"></span></a>Explaining That Promise Code</h2>
 
-<p>A <code>Promise</code> object itself represents the <em>future</em> value of an asynchronous task.</p>
+<p>A <code>Promise</code> represents the <em>future</em> value of an asynchronous task. To obtain the value of that future, we <code>then</code> off the Promise.</p>
 
-<div class="highlight highlight-objc"><pre><span class="n">dispatch_promise</span><span class="p">(</span><span class="o">^</span><span class="p">{</span>
+<div class="highlight highlight-objc"><pre><span class="n">Promise</span> <span class="o">*</span><span class="n">promise</span> <span class="o">=</span> <span class="n">dispatch_promise</span><span class="p">(</span><span class="o">^</span><span class="p">{</span>
     <span class="c1">// we’re in a background thread</span>
     <span class="k">return</span> <span class="n">md5</span><span class="p">(</span><span class="n">email</span><span class="p">);</span>
-<span class="p">}).</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSString</span> <span class="o">*</span><span class="n">md5</span><span class="p">){</span>
+<span class="p">});</span>
+
+<span class="c1">// `dispatch_promise` returns a promise representing the future</span>
+<span class="c1">// value of the block it executes. You can `then` off any</span>
+<span class="c1">// Promise object and it will receive the previous Promise’s</span>
+<span class="c1">// value as its parameter.</span>
+
+<span class="n">promise</span> <span class="o">=</span> <span class="n">promise</span><span class="p">.</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSString</span> <span class="o">*</span><span class="n">md5</span><span class="p">){</span>
     <span class="c1">// we’re back in the main thread</span>
-    <span class="c1">// this next line returns a `Promise *`</span>
     <span class="k">return</span> <span class="p">[</span><span class="n">NSURLConnection</span> <span class="n">GET</span><span class="o">:</span><span class="s">@"http://gravatar.com/avatar/%@"</span><span class="p">,</span> <span class="n">md5</span><span class="p">];</span>
-<span class="p">}).</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">UIImage</span> <span class="o">*</span><span class="n">gravatarImage</span><span class="p">){</span>
-    <span class="c1">// since the last `then` block returned a Promise,</span>
-    <span class="c1">// PromiseKit waited for it to complete before we</span>
-    <span class="c1">// were executed. But now we're done with its result,</span>
-    <span class="c1">// so let’s set that Gravatar image.</span>
+<span class="p">});</span>
+
+<span class="c1">// The previous `then` returned a Promise. The next Promise</span>
+<span class="c1">// will not execute any `then`s until that Promise is fulfilled.</span>
+
+<span class="n">promise</span><span class="p">.</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">UIImage</span> <span class="o">*</span><span class="n">gravatarImage</span><span class="p">){</span>
+    <span class="c1">// The previous promise has fulfilled and provided</span>
+    <span class="c1">// a `UIImage`. So lets finish and set the Gravatar.</span>
     <span class="n">self</span><span class="p">.</span><span class="n">imageView</span><span class="p">.</span><span class="n">image</span> <span class="o">=</span> <span class="n">gravatarImage</span><span class="p">;</span>
 <span class="p">});</span>
 </pre></div>
@@ -124,84 +134,74 @@
 
 <p>Synchronous code has simple, clean error handling:</p>
 
-<div class="highlight highlight-objc"><pre><span class="k">extern</span> <span class="kt">id</span> <span class="nf">download</span><span class="p">(</span><span class="kt">id</span> <span class="n">url</span><span class="p">);</span>
-
-<span class="k">@try</span> <span class="p">{</span>
-    <span class="kt">id</span> <span class="n">json1</span> <span class="o">=</span> <span class="n">download</span><span class="p">(</span><span class="s">@"http://api.service.com/user/me"</span><span class="p">);</span>
-    <span class="kt">id</span> <span class="n">uname</span> <span class="o">=</span> <span class="p">[</span><span class="n">json1</span> <span class="n">valueForKeyPath</span><span class="o">:</span><span class="s">@"user.name"</span><span class="p">];</span>
-    <span class="kt">id</span> <span class="n">json2</span> <span class="o">=</span> <span class="n">download</span><span class="p">([</span><span class="n">NSString</span> <span class="n">stringWithFormat</span><span class="o">:</span><span class="s">@"http://api.service.com/followers/%@"</span><span class="p">,</span> <span class="n">uname</span><span class="p">]);</span>
-    <span class="n">self</span><span class="p">.</span><span class="n">userLabel</span><span class="p">.</span><span class="n">text</span> <span class="o">=</span> <span class="p">@(</span><span class="n">json2</span><span class="p">[</span><span class="s">@"count"</span><span class="p">]).</span><span class="n">description</span><span class="p">;</span>
-<span class="p">}</span> <span class="k">@catch</span> <span class="p">(</span><span class="n">NSError</span> <span class="o">*</span><span class="n">error</span><span class="p">)</span> <span class="p">{</span>
-    <span class="c1">//…</span>
-<span class="p">}</span>
-
-<span class="kt">id</span> <span class="n">download</span><span class="p">(</span><span class="kt">id</span> <span class="n">url</span><span class="p">)</span> <span class="p">{</span>
-    <span class="kt">id</span> <span class="n">url</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSURL</span> <span class="n">URLWithString</span><span class="o">:</span><span class="s">@"http://api.service.com/user/me"</span><span class="p">]</span>
-    <span class="kt">id</span> <span class="n">data</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSData</span> <span class="n">dataWithContentsOfURL</span><span class="o">:</span><span class="n">self</span><span class="p">.</span><span class="n">url</span><span class="p">];</span>
-    <span class="kt">id</span> <span class="n">error</span> <span class="o">=</span> <span class="nb">nil</span><span class="p">;</span>
-    <span class="kt">id</span> <span class="n">json</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSJSONSerialization</span> <span class="n">JSONObjectWithData</span><span class="o">:</span><span class="n">data</span> <span class="n">error</span><span class="o">:&amp;</span><span class="n">error</span><span class="p">];</span>
+<div class="highlight highlight-objc"><pre><span class="k">@try</span> <span class="p">{</span>
+    <span class="kt">id</span> <span class="n">md5</span> <span class="o">=</span> <span class="n">md5</span><span class="p">(</span><span class="n">email</span><span class="p">);</span>
+    <span class="kt">id</span> <span class="n">url</span> <span class="o">=</span> <span class="p">[</span><span class="s">@"http://gravatar.com/avatar/"</span> <span class="n">stringByAppendingString</span><span class="o">:</span><span class="n">md5</span><span class="p">];</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSURL</span> <span class="n">URLWithString</span><span class="o">:</span><span class="n">url</span><span class="p">];</span>
+    <span class="kt">id</span> <span class="n">error</span><span class="p">;</span>
+    <span class="kt">id</span> <span class="n">data</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSData</span> <span class="n">dataWithContentsOfURL</span><span class="o">:</span><span class="n">url</span> <span class="n">options</span><span class="o">:</span><span class="mi">0</span> <span class="n">error</span><span class="o">:&amp;</span><span class="n">error</span><span class="p">];</span>
     <span class="k">if</span> <span class="p">(</span><span class="n">error</span><span class="p">)</span> <span class="k">@throw</span> <span class="n">error</span><span class="p">;</span>
+    <span class="n">self</span><span class="p">.</span><span class="n">imageView</span><span class="p">.</span><span class="n">image</span> <span class="o">=</span> <span class="p">[</span><span class="n">UIImage</span> <span class="n">imageWithData</span><span class="o">:</span><span class="n">data</span><span class="p">];</span>
+<span class="p">}</span> <span class="k">@catch</span> <span class="p">(</span><span class="kt">id</span> <span class="n">thrownObject</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">//…</span>
 <span class="p">}</span>
 </pre></div>
 
-<p>Error handling with asynchronous code is notoriously tricky:</p>
+<p>Error handling with asynchronous code is notoriously tricky. Here's an example using <code>NSURLConnection</code>, CoreLocation and MapKit:</p>
 
 <div class="highlight highlight-objc"><pre><span class="kt">void</span> <span class="p">(</span><span class="o">^</span><span class="n">errorHandler</span><span class="p">)(</span><span class="n">NSError</span> <span class="o">*</span><span class="p">)</span> <span class="o">=</span> <span class="o">^</span><span class="p">(</span><span class="n">NSError</span> <span class="o">*</span><span class="n">error</span><span class="p">){</span>
     <span class="c1">//…</span>
 <span class="p">};</span>
 
-<span class="kt">id</span> <span class="n">url</span> <span class="o">=</span> <span class="s">@"http://api.service.com/user/me"</span><span class="p">;</span>
-<span class="kt">id</span> <span class="n">rq</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSURLRequest</span> <span class="n">requestWithURL</span><span class="o">:</span><span class="p">[</span><span class="n">NSURL</span> <span class="n">URLWithString</span><span class="o">:</span><span class="n">url</span><span class="p">]];</span>
 <span class="p">[</span><span class="n">NSURLConnection</span> <span class="n">sendAsynchronousRequest</span><span class="o">:</span><span class="n">rq</span> <span class="n">queue</span><span class="o">:</span><span class="p">[</span><span class="n">NSOperationQueue</span> <span class="n">mainQueue</span><span class="p">]</span> <span class="n">completionHandler</span><span class="o">:^</span><span class="p">(</span><span class="n">NSURLResponse</span> <span class="o">*</span><span class="n">response</span><span class="p">,</span> <span class="n">NSData</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="n">NSError</span> <span class="o">*</span><span class="n">connectionError</span><span class="p">)</span> <span class="p">{</span>
     <span class="k">if</span> <span class="p">(</span><span class="n">connectionError</span><span class="p">)</span> <span class="p">{</span>
         <span class="n">errorHandler</span><span class="p">(</span><span class="n">connectionError</span><span class="p">);</span>
     <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-        <span class="n">dispatch_async</span><span class="p">(</span><span class="n">bgq</span><span class="p">,</span> <span class="o">^</span><span class="p">{</span>
-            <span class="kt">id</span> <span class="n">jsonError</span> <span class="o">=</span> <span class="nb">nil</span><span class="p">;</span>
-            <span class="kt">id</span> <span class="n">json</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSJSONSerialization</span> <span class="n">JSONObjectWithData</span><span class="o">:</span><span class="n">data</span> <span class="n">error</span><span class="o">:&amp;</span><span class="n">jsonError</span><span class="p">]</span>
-            <span class="n">dispatch_async</span><span class="p">(</span><span class="n">mainq</span><span class="p">,</span> <span class="o">^</span><span class="p">{</span>
-                <span class="k">if</span> <span class="p">(</span><span class="n">jsonError</span><span class="p">)</span> <span class="p">{</span>
-                    <span class="n">errorHandler</span><span class="p">(</span><span class="n">jsonError</span><span class="p">);</span>
+        <span class="kt">id</span> <span class="n">jsonError</span><span class="p">;</span>
+        <span class="kt">id</span> <span class="n">json</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSJSONSerialization</span> <span class="n">JSONObjectWithData</span><span class="o">:</span><span class="n">data</span> <span class="n">options</span><span class="o">:</span><span class="mi">0</span> <span class="n">error</span><span class="o">:&amp;</span><span class="n">jsonError</span><span class="p">];</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">jsonError</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">errorHandler</span><span class="p">(</span><span class="n">jsonError</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="kt">id</span> <span class="n">home</span> <span class="o">=</span> <span class="p">[</span><span class="n">json</span> <span class="n">valueForKeyPath</span><span class="o">:</span><span class="s">@"user.home.address"</span><span class="p">];</span>
+            <span class="p">[[</span><span class="n">CLGeocoder</span> <span class="n">new</span><span class="p">]</span> <span class="n">geocodeAddressString</span><span class="o">:</span><span class="n">home</span> <span class="n">completionHandler</span><span class="o">:^</span><span class="p">(</span><span class="n">NSArray</span> <span class="o">*</span><span class="n">placemarks</span><span class="p">,</span> <span class="n">NSError</span> <span class="o">*</span><span class="n">error</span><span class="p">)</span> <span class="p">{</span>
+                <span class="k">if</span> <span class="p">(</span><span class="n">error</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">errorHandler</span><span class="p">(</span><span class="n">error</span><span class="p">);</span>
                 <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-                    <span class="kt">id</span> <span class="n">uname</span> <span class="o">=</span> <span class="p">[</span><span class="n">json</span> <span class="n">valueForKeyPath</span><span class="o">:</span><span class="s">@"user.name"</span><span class="p">];</span>
-                    <span class="kt">id</span> <span class="n">url</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSString</span> <span class="n">stringWithFormat</span><span class="o">:</span><span class="s">@"http://api.service.com/followers/%@"</span><span class="p">,</span> <span class="n">uname</span><span class="p">];</span>
-                    <span class="kt">id</span> <span class="n">rq</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSURLRequest</span> <span class="n">requestWithURL</span><span class="o">:</span><span class="p">[</span><span class="n">NSURL</span> <span class="n">URLWithString</span><span class="o">:</span><span class="n">url</span><span class="p">]];</span>
-                    <span class="p">[</span><span class="n">NSURLConnection</span> <span class="n">sendAsynchronousRequest</span><span class="o">:</span><span class="n">rq</span> <span class="n">queue</span><span class="o">:</span><span class="p">[</span><span class="n">NSOperationQueue</span> <span class="n">mainQueue</span><span class="p">]</span> <span class="n">completionHandler</span><span class="o">:^</span><span class="p">(</span><span class="n">NSURLResponse</span> <span class="o">*</span><span class="n">response</span><span class="p">,</span> <span class="n">NSData</span> <span class="o">*</span><span class="n">data</span><span class="p">,</span> <span class="n">NSError</span> <span class="o">*</span><span class="n">connectionError</span><span class="p">)</span> <span class="p">{</span>
-                        <span class="k">if</span> <span class="p">(</span><span class="n">connectionError</span><span class="p">)</span> <span class="p">{</span>
-                            <span class="n">errorHandler</span><span class="p">(</span><span class="n">connectionError</span><span class="p">);</span>
+                    <span class="n">MKDirectionsRequest</span> <span class="o">*</span><span class="n">rq</span> <span class="o">=</span> <span class="p">[</span><span class="n">MKDirectionsRequest</span> <span class="n">new</span><span class="p">];</span>
+                    <span class="n">rq</span><span class="p">.</span><span class="n">source</span> <span class="o">=</span> <span class="p">[</span><span class="n">MKMapItem</span> <span class="n">mapItemForCurrentLocation</span><span class="p">];</span>
+                    <span class="n">rq</span><span class="p">.</span><span class="n">destination</span> <span class="o">=</span> <span class="p">[[</span><span class="n">MKMapItem</span> <span class="n">alloc</span><span class="p">]</span> <span class="n">initWithPlacemark</span><span class="o">:</span><span class="p">[[</span><span class="n">MKPlacemark</span> <span class="n">alloc</span><span class="p">]</span> <span class="n">initWithPlacemark</span><span class="o">:</span><span class="n">placemarks</span><span class="p">[</span><span class="mi">0</span><span class="p">]]];</span>
+                    <span class="n">MKDirections</span> <span class="o">*</span><span class="n">directions</span> <span class="o">=</span> <span class="p">[[</span><span class="n">MKDirections</span> <span class="n">alloc</span><span class="p">]</span> <span class="n">initWithRequest</span><span class="o">:</span><span class="n">rq</span><span class="p">];</span>
+                    <span class="p">[</span><span class="n">directions</span> <span class="n">calculateDirectionsWithCompletionHandler</span><span class="o">:^</span><span class="p">(</span><span class="n">MKDirectionsResponse</span> <span class="o">*</span><span class="n">response</span><span class="p">,</span> <span class="n">NSError</span> <span class="o">*</span><span class="n">error</span><span class="p">)</span> <span class="p">{</span>
+                        <span class="k">if</span> <span class="p">(</span><span class="n">error</span><span class="p">)</span> <span class="p">{</span>
+                            <span class="n">errorHandler</span><span class="p">(</span><span class="n">error</span><span class="p">);</span>
                         <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-                            <span class="n">dispatch_async</span><span class="p">(</span><span class="n">bgq</span><span class="p">,</span> <span class="o">^</span><span class="p">{</span>
-                                <span class="kt">id</span> <span class="n">jsonError</span> <span class="o">=</span> <span class="nb">nil</span><span class="p">;</span>
-                                <span class="kt">id</span> <span class="n">json</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSJSONSerialization</span> <span class="n">JSONObjectWithData</span><span class="o">:</span><span class="n">data</span> <span class="n">error</span><span class="o">:&amp;</span><span class="n">jsonError</span><span class="p">]</span>
-                                <span class="n">dispatch_async</span><span class="p">(</span><span class="n">mainq</span><span class="p">,</span> <span class="o">^</span><span class="p">{</span>
-                                    <span class="k">if</span> <span class="p">(</span><span class="n">jsonError</span><span class="p">)</span> <span class="p">{</span>
-                                        <span class="n">errorHandler</span><span class="p">(</span><span class="n">jsonError</span><span class="p">);</span>
-                                    <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-                                        <span class="n">self</span><span class="p">.</span><span class="n">userLabel</span><span class="p">.</span><span class="n">text</span> <span class="o">=</span> <span class="p">@(</span><span class="n">json2</span><span class="p">[</span><span class="s">@"count"</span><span class="p">]).</span><span class="n">description</span><span class="p">;</span>
-                                    <span class="p">}</span>
-                                <span class="p">});</span>
-                            <span class="p">});</span>
+                            <span class="c1">//…</span>
                         <span class="p">}</span>
-                    <span class="p">}</span>
+                    <span class="p">}];</span>
                 <span class="p">}</span>
-            <span class="p">});</span>
-        <span class="p">});</span>
+            <span class="p">}];</span>
+        <span class="p">}</span>
     <span class="p">}</span>
 <span class="p">}];</span>
 </pre></div>
 
-<p>Wow! Such rightward-drift. To be fair the above <a href="https://gist.github.com/mxcl/11267639">could be simplified</a>, but without creating your own <code>NSOperationQueue</code> and without using early-return statements and without DRYing out something as common as deserialzing some downloaded JSON, this is what you get. In fact standard asynchronicity handling in iOS practically encourages you to deserialize the JSON on the main thread—simply to avoid rightward-drift.</p>
+<p>Not only does this code drift ever rightwards, reducing readability, but it doesn't even handle exceptions that might be thrown (like if there are zero placemarks in the <code>placemarks</code> array). The code doesn’t even decode the JSON in a background thread, which may introduce UI lag. But who would want to add <em>another</em> closure?</p>
 
 <h2>
 <a name="promises-have-elegant-error-handling" class="anchor" href="#promises-have-elegant-error-handling"><span class="octicon octicon-link"></span></a>Promises Have Elegant Error Handling</h2>
 
 <div class="highlight highlight-objc"><pre><span class="cp">#import "PromiseKit.h"</span>
 
-<span class="p">[</span><span class="n">NSURLConnection</span> <span class="n">GET</span><span class="o">:</span><span class="s">@"http://api.service.com/user/me"</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="kt">id</span> <span class="n">json</span><span class="p">){</span>
-    <span class="kt">id</span> <span class="n">name</span> <span class="o">=</span> <span class="p">[</span><span class="n">json</span> <span class="n">valueForKeyPath</span><span class="o">:</span><span class="s">@"user.name"</span><span class="p">];</span>
-    <span class="k">return</span> <span class="p">[</span><span class="n">NSURLConnection</span> <span class="n">GET</span><span class="o">:</span><span class="s">@"http://api.service.com/followers/%@"</span><span class="p">,</span> <span class="n">name</span><span class="p">];</span>
-<span class="p">}).</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="kt">id</span> <span class="n">json</span><span class="p">){</span>
-    <span class="n">self</span><span class="p">.</span><span class="n">userLabel</span><span class="p">.</span><span class="n">text</span> <span class="o">=</span> <span class="p">@(</span><span class="n">json</span><span class="p">[</span><span class="s">@"count"</span><span class="p">]).</span><span class="n">description</span><span class="p">;</span>
+<span class="p">[</span><span class="n">NSURLConnection</span> <span class="n">promise</span><span class="o">:</span><span class="n">rq</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="kt">id</span> <span class="n">json</span><span class="p">){</span>
+    <span class="kt">id</span> <span class="n">home</span> <span class="o">=</span> <span class="p">[</span><span class="n">json</span> <span class="n">valueForKeyPath</span><span class="o">:</span><span class="s">@"user.home.address"</span><span class="p">];</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">CLGeocoder</span> <span class="n">geocode</span><span class="o">:</span><span class="n">home</span><span class="p">];</span>
+<span class="p">}).</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSArray</span> <span class="o">*</span><span class="n">placemarks</span><span class="p">){</span>
+    <span class="n">MKDirectionsRequest</span> <span class="o">*</span><span class="n">rq</span> <span class="o">=</span> <span class="p">[</span><span class="n">MKDirectionsRequest</span> <span class="n">new</span><span class="p">];</span>
+    <span class="n">rq</span><span class="p">.</span><span class="n">source</span> <span class="o">=</span> <span class="p">[</span><span class="n">MKMapItem</span> <span class="n">mapItemForCurrentLocation</span><span class="p">];</span>
+    <span class="n">rq</span><span class="p">.</span><span class="n">destination</span> <span class="o">=</span> <span class="p">[[</span><span class="n">MKMapItem</span> <span class="n">alloc</span><span class="p">]</span> <span class="n">initWithPlacemark</span><span class="o">:</span><span class="p">[[</span><span class="n">MKPlacemark</span> <span class="n">alloc</span><span class="p">]</span> <span class="n">initWithPlacemark</span><span class="o">:</span><span class="n">placemarks</span><span class="p">[</span><span class="mi">0</span><span class="p">]]];</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">MKDirections</span> <span class="n">promise</span><span class="o">:</span><span class="n">rq</span><span class="p">];</span>
+<span class="p">}).</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">MKDirectionsResponse</span> <span class="o">*</span><span class="n">directions</span><span class="p">){</span>
+    <span class="c1">//…</span>
 <span class="p">}).</span><span class="n">catch</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSError</span> <span class="o">*</span><span class="n">error</span><span class="p">){</span>
     <span class="c1">//…</span>
 <span class="p">});</span>
@@ -209,7 +209,7 @@
 
 <p>Raised exceptions or <code>NSError</code> objects returned from handlers bubble up to the first <code>catch</code> handler in the chain.</p>
 
-<p>PromiseKit’s <code>NSURLConnection</code> additions correctly propogate errors for you (as well as decoding the JSON automatically in a background thread based on the mime-type the server returns).</p>
+<p>The above makes heavy use of PromiseKit’s category additions to the iOS SDK. Mostly PromiseKit’s categories are logical conversions of block-based or delegation-based patterns to Promises. The exception here is <code>NSURLConnection+PromiseKit</code> which detects that the response in JSON (from the HTTP headers) and deserializes the JSON for you in a background thread. All of PromiseKit’s categories are optional CocoaPods subspecs.</p>
 
 <h1>
 <a name="say-goodbye-to-asynchronous-state-machines" class="anchor" href="#say-goodbye-to-asynchronous-state-machines"><span class="octicon octicon-link"></span></a>Say Goodbye to Asynchronous State Machines</h1>
@@ -242,12 +242,12 @@
 <span class="k">@end</span>
 </pre></div>
 
-<p>A key understanding is that Promises can only exist in two states, <em>pending</em> or <em>fulfilled</em>. The fulfilled state is either a value or an <code>NSError</code> object. A Promise can move from pending to fulfilled <strong>exactly once</strong>.</p>
+<p>A key understanding is that Promises can only exist in two states, <em>pending</em> or <em>fulfilled</em>. The fulfilled state is either a value or an <code>NSError</code> object. A Promise can move from pending to fulfilled <strong>exactly once</strong>. Whichever state the Promise is in, you can <code>then</code> off it.</p>
 
 <h1>
 <a name="waiting-on-multiple-asynchronous-operations" class="anchor" href="#waiting-on-multiple-asynchronous-operations"><span class="octicon octicon-link"></span></a>Waiting on Multiple Asynchronous Operations</h1>
 
-<p>One powerful reason to use asynchronous variants is so we can do two or more asynchronous operations simultaneously. However writing code that acts when the simultaneous operations have all completed is hard. Not so with PromiseKit:</p>
+<p>One common reason to use asynchronous variants is so we can do two or more asynchronous operations simultaneously. However writing code that acts when all the simultaneous operations have completed is tricky and bug-prone. Not so with PromiseKit:</p>
 
 <div class="highlight highlight-objc"><pre><span class="n">Promise</span> <span class="o">*</span><span class="n">grabcat</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSURLConnection</span> <span class="n">GET</span><span class="o">:</span><span class="s">@"http://placekitten.org/%d/%d"</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">];</span>
 <span class="n">Promise</span> <span class="o">*</span><span class="n">locater</span> <span class="o">=</span> <span class="p">[</span><span class="n">CLLocationManager</span> <span class="n">promise</span><span class="p">];</span>
@@ -267,11 +267,11 @@
 </pre></div>
 
 <h1>
-<a name="forgiving-syntax" class="anchor" href="#forgiving-syntax"><span class="octicon octicon-link"></span></a>Forgiving Syntax</h1>
+<a name="tolerant-to-the-max" class="anchor" href="#tolerant-to-the-max"><span class="octicon octicon-link"></span></a>Tolerant to the Max</h1>
 
-<p>In case you didn't notice, the block you pass to <code>then</code> or <code>catch</code> can have return type of <code>Promise</code>, or any object, or nothing. And it can have a parameter of <code>id</code>, or a specific class type, or nothing.</p>
+<p>The block you pass to <code>then</code> or <code>catch</code> can have return type of <code>Promise</code>, or any object, or nothing. And it can have a parameter of <code>id</code>, or a specific class type, or nothing.</p>
 
-<p>So, these are all valid:</p>
+<p>So all of these are valid:</p>
 
 <div class="highlight highlight-objc"><pre><span class="n">myPromise</span><span class="p">.</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">{</span>
     <span class="c1">//…</span>
@@ -292,7 +292,22 @@
 
 <p>Clang is smart so you don’t (usually) have to specify a return type for your block.</p>
 
-<p>This is not usual to Objective-C or blocks. Usually everything is very explicit. We are using introspection to determine what arguments and return types you are working with. Thus, programming with PromiseKit has similarities to programming with more modern languages like Ruby or Javascript.</p>
+<p>This is not usual to Objective-C or blocks. Usually everything is very explicit. We are using introspection to determine what arguments and return types you are working with. Thus, programming with PromiseKit has similarities to programming with (more) modern languages like Ruby or Javascript.</p>
+
+<p>In fact these (and more) are also fine:</p>
+
+<div class="highlight highlight-objc"><pre><span class="n">myPromise</span><span class="p">.</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">{</span>
+    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+<span class="p">}).</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSNumber</span> <span class="o">*</span><span class="n">n</span><span class="p">){</span>
+    <span class="n">assert</span><span class="p">([</span><span class="n">n</span> <span class="n">isEqual</span><span class="o">:</span><span class="mi">@1</span><span class="p">]);</span>
+<span class="p">});</span>
+
+<span class="n">myPromise</span><span class="p">.</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">{</span>
+    <span class="k">return</span> <span class="nb">false</span><span class="p">;</span>
+<span class="p">}).</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSNumber</span> <span class="o">*</span><span class="n">n</span><span class="p">){</span>
+    <span class="n">assert</span><span class="p">([</span><span class="n">n</span> <span class="n">isEqual</span><span class="o">:</span><span class="p">@</span><span class="nb">NO</span><span class="p">]);</span>
+<span class="p">});</span>
+</pre></div>
 
 <h1>
 <a name="the-category-additions" class="anchor" href="#the-category-additions"><span class="octicon octicon-link"></span></a>The Category Additions</h1>
@@ -335,7 +350,7 @@
 <span class="p">});</span>
 </pre></div>
 
-<p>PromiseKit reads the response headers and tries to be helpful:</p>
+<p>PromiseKit reads the response headers and decodes the result you actually wanted (in a background thread):</p>
 
 <div class="highlight highlight-objc"><pre><span class="p">[</span><span class="n">NSURLConnection</span> <span class="n">GET</span><span class="o">:</span><span class="s">@"http://example.com/some.json"</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSDictionary</span> <span class="o">*</span><span class="n">json</span><span class="p">){</span>
     <span class="n">assert</span><span class="p">([</span><span class="n">json</span> <span class="n">isKindOfClass</span><span class="o">:</span><span class="p">[</span><span class="n">NSDictionary</span> <span class="n">class</span><span class="p">]]);</span>
@@ -352,7 +367,7 @@
 
 <div class="highlight highlight-objc"><pre><span class="n">NSMutableURLRequest</span> <span class="o">*</span><span class="n">rq</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSMutableURLRequest</span> <span class="n">requestWithURL</span><span class="o">:</span><span class="n">url</span><span class="p">];</span>
 <span class="p">[</span><span class="n">rq</span> <span class="n">addValue</span><span class="o">:</span><span class="s">@"PromiseKit"</span> <span class="n">forHTTPHeader</span><span class="o">:</span><span class="s">@"User-Agent"</span><span class="p">];</span> 
-<span class="p">[</span><span class="n">NSURLConnetion</span> <span class="n">promise</span><span class="o">:</span><span class="n">rq</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSData</span> <span class="o">*</span><span class="n">data</span><span class="p">){</span>
+<span class="p">[</span><span class="n">NSURLConnection</span> <span class="n">promise</span><span class="o">:</span><span class="n">rq</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSData</span> <span class="o">*</span><span class="n">data</span><span class="p">){</span>
     <span class="c1">//…</span>
 <span class="p">})</span>
 </pre></div>
@@ -365,6 +380,27 @@
 <div class="highlight highlight-objc"><pre><span class="cp">#import "PromiseKit+CoreLocation.h"</span>
 
 <span class="p">[</span><span class="n">CLLocationManager</span> <span class="n">promise</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">CLLocation</span> <span class="o">*</span><span class="n">currentUserLocation</span><span class="p">){</span>
+    <span class="c1">//…</span>
+<span class="p">}).</span><span class="n">catch</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSError</span> <span class="o">*</span><span class="n">error</span><span class="p">){</span>
+    <span class="c1">//…</span>
+<span class="p">});</span>
+</pre></div>
+
+<h2>
+<a name="clgeocoderpromisekit" class="anchor" href="#clgeocoderpromisekit"><span class="octicon octicon-link"></span></a>CLGeocoder+PromiseKit</h2>
+
+<div class="highlight highlight-objc"><pre><span class="cp">#import "PromiseKit+CoreLocation.h"</span>
+
+<span class="p">[</span><span class="n">CLGeocoder</span> <span class="n">geocode</span><span class="o">:</span><span class="s">@"mount rushmore"</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSArray</span> <span class="o">*</span><span class="n">placemarks</span><span class="p">){</span>
+    <span class="c1">//…</span>
+<span class="p">}).</span><span class="n">catch</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSError</span> <span class="o">*</span><span class="n">error</span><span class="p">){</span>
+    <span class="c1">//…</span>
+<span class="p">});</span>
+
+<span class="n">CLLocation</span> <span class="o">*</span><span class="n">someLocation</span> <span class="o">=</span> <span class="err">…</span><span class="p">;</span>
+<span class="p">[</span><span class="n">CLGeocoder</span> <span class="n">reverseGeocode</span><span class="o">:</span><span class="n">someLocation</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSArray</span> <span class="o">*</span><span class="n">placemarks</span><span class="p">){</span>
+    <span class="c1">//…</span>
+<span class="p">}).</span><span class="n">catch</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSError</span> <span class="o">*</span><span class="n">error</span><span class="p">){</span>
     <span class="c1">//…</span>
 <span class="p">});</span>
 </pre></div>
@@ -407,24 +443,18 @@
     <span class="n">UIViewController</span> <span class="o">*</span><span class="n">vc</span> <span class="o">=</span> <span class="p">[</span><span class="n">MyDetailViewController</span> <span class="n">new</span><span class="p">];</span>
     <span class="p">[</span><span class="n">self</span> <span class="n">promiseViewController</span><span class="o">:</span><span class="n">vc</span> <span class="n">animated</span><span class="o">:</span><span class="nb">YES</span> <span class="n">completion</span><span class="o">:</span><span class="nb">nil</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="kt">id</span> <span class="n">result</span><span class="p">){</span>
         <span class="c1">// the result from below in `someTimeLater`</span>
-        <span class="c1">// PromiseKit dismisses the MyDetailViewController instance when the</span>
-        <span class="c1">// `Deferred` is resolved</span>
+        <span class="c1">// PromiseKit automatically dismisses the MyDetailViewController</span>
     <span class="p">});</span>
 <span class="p">}</span>
 
 <span class="k">@end</span>
 
 <span class="k">@implementation</span> <span class="nc">MyDetailViewController</span>
-<span class="k">@property</span> <span class="n">Deferred</span> <span class="o">*</span><span class="n">deferred</span><span class="p">;</span>
-
-<span class="k">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">viewWillDefer:</span><span class="p">(</span><span class="n">Deferred</span> <span class="o">*</span><span class="p">)</span><span class="nv">deferMe</span> <span class="p">{</span>
-    <span class="c1">// PromiseKit calls this so you can control the presentation</span>
-    <span class="c1">// of this ViewController. Deferred is documented below.</span>
-    <span class="n">_deferred</span> <span class="o">=</span> <span class="n">deferMe</span><span class="p">;</span>
-<span class="p">}</span>
 
 <span class="k">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">someTimeLater</span> <span class="p">{</span>
-    <span class="p">[</span><span class="n">_deferred</span> <span class="n">resolve</span><span class="o">:</span><span class="n">someResult</span><span class="p">];</span>
+    <span class="p">[</span><span class="n">self</span> <span class="n">fulfill</span><span class="o">:</span><span class="n">someResult</span><span class="p">];</span>
+
+    <span class="c1">// if you want to trigger the `catch` use `[self reject:foo]`</span>
 <span class="p">}</span>
 
 <span class="k">@end</span>
@@ -442,45 +472,56 @@
 
 <p>Please submit equivalents for eg. <code>UIImagePickerController</code>.</p>
 
+<h2>
+<a name="mkdirectionspromisekit" class="anchor" href="#mkdirectionspromisekit"><span class="octicon octicon-link"></span></a>MKDirections+PromiseKit</h2>
+
+<div class="highlight highlight-objc"><pre><span class="cp">#import "PromiseKit+MapKit.h"</span>
+
+<span class="n">MKDirectionsRequest</span> <span class="o">*</span><span class="n">rq</span> <span class="o">=</span> <span class="p">[</span><span class="n">MKDirectionsRequest</span> <span class="n">new</span><span class="p">];</span>
+<span class="n">rq</span><span class="p">.</span><span class="n">source</span> <span class="o">=</span> <span class="p">[</span><span class="n">MKMapItem</span> <span class="n">mapItemForCurrentLocation</span><span class="p">];</span>
+<span class="n">rq</span><span class="p">.</span><span class="n">destination</span> <span class="o">=</span> <span class="err">…</span><span class="p">;</span>
+<span class="p">[</span><span class="n">MKDirections</span> <span class="n">promise</span><span class="o">:</span><span class="n">rq</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">MKDirectionsResponse</span> <span class="o">*</span><span class="n">rsp</span><span class="p">){</span>
+    <span class="c1">//…</span>
+<span class="p">}).</span><span class="n">catch</span><span class="p">(</span><span class="o">^</span><span class="p">{</span>
+    <span class="c1">//…</span>
+<span class="p">});</span>
+
+<span class="p">[</span><span class="n">MKDirections</span> <span class="n">promiseETA</span><span class="o">:</span><span class="n">rq</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">MKETAResponse</span> <span class="o">*</span><span class="n">rsp</span><span class="p">){</span>
+    <span class="c1">//…</span>
+<span class="p">}).</span><span class="n">catch</span><span class="p">(</span><span class="o">^</span><span class="p">{</span>
+    <span class="c1">//…</span>
+<span class="p">});</span>
+</pre></div>
+
 <h1>
 <a name="more-documentation" class="anchor" href="#more-documentation"><span class="octicon octicon-link"></span></a>More Documentation</h1>
 
-<p>Check out <a href="Private/Promise.h">Promise.h</a> and the rest of the sources.</p>
+<p>Check out <a href="PromiseKit/Promise.h">Promise.h</a> and the rest of the sources.</p>
 
 <h1>
-<a name="deferred" class="anchor" href="#deferred"><span class="octicon octicon-link"></span></a>Deferred</h1>
+<a name="promizing-your-codebase" class="anchor" href="#promizing-your-codebase"><span class="octicon octicon-link"></span></a>Promizing Your Codebase</h1>
 
-<p>If you want to write your own methods that return Promises then often you will need a <code>Deferred</code> object. Promises are deliberately opaque: you can't directly modify them, only their parent promise can.</p>
+<p>This:</p>
 
-<p>A <code>Deferred</code> has a promise, and using a <code>Deferred</code> you can set that Promise's value, the Deferred then recursively calls any sub-promises. For example:</p>
-
-<div class="highlight highlight-objc"><pre><span class="k">-</span> <span class="p">(</span><span class="n">Promise</span> <span class="o">*</span><span class="p">)</span><span class="nf">tenThousandRandomNumbers</span> <span class="p">{</span>
-    <span class="n">Deferred</span> <span class="o">*</span><span class="n">d</span> <span class="o">=</span> <span class="p">[</span><span class="n">Deferred</span> <span class="n">new</span><span class="p">];</span>
-
-    <span class="n">dispatch_async</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="o">^</span><span class="p">{</span>
+<div class="highlight highlight-objc"><pre><span class="k">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">calculateTenThousandRandomNumbersWithCompletionBlock:</span><span class="p">(</span><span class="kt">void</span><span class="p">(</span><span class="o">^</span><span class="p">)(</span><span class="n">NSArray</span> <span class="o">*</span><span class="p">))</span><span class="nv">completionBlock</span> <span class="p">{</span>
+    <span class="n">dispatch_async</span><span class="p">(</span><span class="n">dispatch_get_global_queue</span><span class="p">(</span><span class="n">DISPATCH_QUEUE_PRIORITY_DEFAULT</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="o">^</span><span class="p">{</span>
         <span class="n">NSMutableArray</span> <span class="o">*</span><span class="n">numbers</span> <span class="o">=</span> <span class="p">[</span><span class="n">NSMutableArray</span> <span class="n">new</span><span class="p">];</span>
         <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="mi">10000</span><span class="p">;</span> <span class="n">x</span><span class="o">++</span><span class="p">)</span>
             <span class="p">[</span><span class="n">numbers</span> <span class="n">addObject</span><span class="o">:</span><span class="p">@(</span><span class="n">arc4random</span><span class="p">())];</span>
         <span class="n">dispatch_async</span><span class="p">(</span><span class="n">dispatch_get_main_queue</span><span class="p">(),</span> <span class="o">^</span><span class="p">{</span>
-            <span class="k">if</span> <span class="p">(</span><span class="n">logic</span><span class="p">)</span> <span class="p">{</span>
-                <span class="p">[</span><span class="n">d</span> <span class="n">resolve</span><span class="o">:</span><span class="n">numbers</span><span class="p">];</span>
-            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
-                <span class="p">[</span><span class="n">d</span> <span class="n">reject</span><span class="o">:</span><span class="p">[</span><span class="n">NSError</span> <span class="n">errorWith</span><span class="err">…</span><span class="p">]];</span>
-            <span class="p">}</span>
+            <span class="n">completionBlock</span><span class="p">(</span><span class="n">numbers</span><span class="p">);</span>
         <span class="p">});</span>
     <span class="p">});</span>
-
-    <span class="k">return</span> <span class="n">d</span><span class="p">.</span><span class="n">promise</span><span class="p">;</span>
 <span class="p">}</span>
 
 <span class="k">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">viewDidLoad</span> <span class="p">{</span>
-    <span class="p">[</span><span class="n">self</span> <span class="n">tenThousandRandomNumbers</span><span class="p">].</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSMutableArray</span> <span class="o">*</span><span class="n">numbers</span><span class="p">){</span>
+    <span class="p">[</span><span class="n">self</span> <span class="n">calculateTenThousandRandomNumbersWithCompletionBlock</span><span class="o">:^</span><span class="p">(</span><span class="n">NSArray</span> <span class="o">*</span><span class="n">numbers</span><span class="p">){</span>
         <span class="c1">//…</span>
-    <span class="p">});</span>
+    <span class="p">}];</span>
 <span class="p">}</span>
 </pre></div>
 
-<p>Although for the common case of an operation that runs in the background we offer the convenience function <code>dispatch_promise</code>, which is like <code>dispatch_async</code>, but returns a Promise (which continues on the main queue). So the above would be:</p>
+<p>Becomes this:</p>
 
 <div class="highlight highlight-objc"><pre><span class="k">-</span> <span class="p">(</span><span class="n">Promise</span> <span class="o">*</span><span class="p">)</span><span class="nf">tenThousandRandomNumbers</span> <span class="p">{</span>
     <span class="k">return</span> <span class="n">dispatch_promise</span><span class="p">(</span><span class="o">^</span><span class="p">{</span>
@@ -490,25 +531,34 @@
         <span class="k">return</span> <span class="n">numbers</span><span class="p">;</span>
     <span class="p">});</span>
 <span class="p">}</span>
+
+<span class="k">-</span> <span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="nf">viewDidLoad</span> <span class="p">{</span>
+    <span class="n">self</span><span class="p">.</span><span class="n">tenThousandRandomNumbers</span><span class="p">.</span><span class="n">then</span><span class="p">(</span><span class="o">^</span><span class="p">(</span><span class="n">NSArray</span> <span class="o">*</span><span class="n">numbers</span><span class="p">){</span>
+        <span class="c1">//…</span>
+    <span class="p">}];</span>
+<span class="p">}</span>
 </pre></div>
 
-<p><code>dispatch_promise</code> runs on <code>DISPATCH_QUEUE_PRIORITY_DEFAULT</code>. If you need another queue we also provide: <code>dispatch_promise_on</code>.</p>
+<h2>
+<a name="wrapping-eg-parse" class="anchor" href="#wrapping-eg-parse"><span class="octicon octicon-link"></span></a>Wrapping e.g. Parse</h2>
+
+<div class="highlight highlight-objc"><pre><span class="k">-</span> <span class="p">(</span><span class="n">Promise</span> <span class="o">*</span><span class="p">)</span><span class="nf">allUsers</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">Promise</span> <span class="n">new</span><span class="o">:^</span><span class="p">(</span><span class="n">PromiseResolver</span> <span class="n">fulfiller</span><span class="p">,</span> <span class="n">PromiseResolver</span> <span class="n">rejecter</span><span class="p">){</span>
+        <span class="n">PFQuery</span> <span class="o">*</span><span class="n">query</span> <span class="o">=</span> <span class="p">[</span><span class="n">PFQuery</span> <span class="n">queryWithClassName</span><span class="o">:</span><span class="s">@"User"</span><span class="p">];</span>
+        <span class="p">[</span><span class="n">query</span> <span class="n">findObjectsInBackgroundWithBlock</span><span class="o">:^</span><span class="p">(</span><span class="n">NSArray</span> <span class="o">*</span><span class="n">objects</span><span class="p">,</span> <span class="n">NSError</span> <span class="o">*</span><span class="n">error</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">if</span> <span class="p">(</span><span class="o">!</span><span class="n">error</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">fulfiller</span><span class="p">(</span><span class="n">objects</span><span class="p">);</span>
+            <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+                <span class="n">rejecter</span><span class="p">(</span><span class="n">error</span><span class="p">);</span>
+            <span class="p">}</span>
+        <span class="p">}];</span>
+    <span class="p">}];</span>
+<span class="p">}</span>
+</pre></div>
+
+<p><code>PromiseResolver</code> is <code>typedef void (^PromiseResolver)(id)</code>, i.e. a block that takes a parameter of <code>id</code> and returns <code>void</code>.</p>
 
 <h1>
-<a name="the-fine-print" class="anchor" href="#the-fine-print"><span class="octicon octicon-link"></span></a>The Fine Print</h1>
-
-<p>The fine print of PromiseKit is mostly exactly what you would expect, so don’t confuse yourself: only come back here when you find yourself curious about more advanced techniques.</p>
-
-<ul>
-<li>Returning a Promise as the value of a <code>then</code> (or <code>catch</code>) handler will cause any subsequent handlers to wait for that Promise to fulfill.</li>
-<li>Returning an instance of <code>NSError</code> or throwing an exception within a then block will cause PromiseKit to bubble that object up to the nearest catch handler.</li>
-<li>
-<code>catch</code> handlers always are passed an <code>NSError</code> object.</li>
-<li>Returning something other than an <code>NSError</code> from a <code>catch</code> handler causes PromiseKit to consider the error resolved, and execution will continue at the next <code>then</code> handler using the object you returned as the input.</li>
-<li>Not returning from a <code>catch</code> handler (or returning nil) causes PromiseKit to consider the Promise complete. No further bubbling occurs.</li>
-<li>Nothing happens if you add a <code>then</code> to a failed Promise</li>
-<li>Adding a <code>catch</code> handler to a failed Promise will execute that fail handler: this is converse to adding the same to a <strong>pending</strong> Promise.</li>
-</ul><h1>
 <a name="adding-promises-to-third-party-libraries" class="anchor" href="#adding-promises-to-third-party-libraries"><span class="octicon octicon-link"></span></a>Adding Promises to Third Party Libraries</h1>
 
 <p>It would be great if every library with asynchronous functionality would offer opt-in <code>Promise *</code> variants for the asynchronous mechanisms.</p>
@@ -531,14 +581,14 @@
 
 <span class="cm">/**</span>
 <span class="cm"> * Returns a Promise that overlays a kitten image.</span>
-<span class="cm"> * @return A Promise that will then a `UIImage *` object.</span>
+<span class="cm"> * @return A Promise that will `then` a `UIImage *` object.</span>
 <span class="cm"> */</span>
 <span class="k">-</span> <span class="p">(</span><span class="n">Promise</span> <span class="o">*</span><span class="p">)</span><span class="nf">overlayKitten</span><span class="p">;</span>
 
 <span class="k">@end</span>
 </pre></div>
 
-<p>It's crucially important to document your Promise methods <a href="http://nshipster.com/documentation/">properly</a>, because the result of a Promise can be any object type and your users need to be able to easily look up the types by ⌥ clicking the method.</p>
+<p>It's crucially important to document your Promise methods <a href="http://nshipster.com/documentation/">properly</a>, because subsequent <code>then</code>s are not strongly typed, thus the only clue the user has is how you named your method and the documentation they can get when <strong>⌥</strong> clicking that method.</p>
 
 <p>Consumers of your library would then include in their <code>Podfile</code>:</p>
 
@@ -562,7 +612,7 @@
   <span class="n">s</span><span class="o">.</span><span class="n">name</span>         <span class="o">=</span> <span class="s2">"ABCKitten"</span>
   <span class="n">s</span><span class="o">.</span><span class="n">version</span>      <span class="o">=</span> <span class="s2">"1.1"</span>
 
-  <span class="n">s</span><span class="o">.</span><span class="n">default_subspec</span> <span class="o">=</span> <span class="s1">'base'</span>  <span class="c1"># ensures that we are opt-in</span>
+  <span class="n">s</span><span class="o">.</span><span class="n">default_subspec</span> <span class="o">=</span> <span class="s1">'base'</span>  <span class="c1"># ensures that the PromiseKit additions are opt-in</span>
 
   <span class="n">s</span><span class="o">.</span><span class="n">subspec</span> <span class="s1">'base'</span> <span class="k">do</span> <span class="o">|</span><span class="n">ss</span><span class="o">|</span>
     <span class="n">ss</span><span class="o">.</span><span class="n">source_files</span> <span class="o">=</span> <span class="s1">'ABCKitten.{m,h}'</span>
@@ -575,22 +625,8 @@
 <span class="k">end</span>
 </pre></div>
 
-<p>As a further example, the actual implementation of <code>- (Promise *)overlayKitten</code> would likely be as simple as this:</p>
-
-<div class="highlight highlight-objc"><pre><span class="k">-</span> <span class="p">(</span><span class="n">Promise</span> <span class="o">*</span><span class="p">)</span><span class="nf">overlayKitten</span> <span class="p">{</span>
-    <span class="n">Deferred</span> <span class="o">*</span><span class="n">deferred</span> <span class="o">=</span> <span class="p">[</span><span class="n">Deferred</span> <span class="n">new</span><span class="p">];</span>
-    <span class="p">[</span><span class="n">self</span> <span class="n">overlayKittenWithCompletionBlock</span><span class="o">:^</span><span class="p">(</span><span class="n">UIImage</span> <span class="o">*</span><span class="n">img</span><span class="p">,</span> <span class="n">NSError</span> <span class="o">*</span><span class="n">err</span><span class="p">){</span>
-        <span class="k">if</span> <span class="p">(</span><span class="n">err</span><span class="p">)</span>
-            <span class="p">[</span><span class="n">deferred</span> <span class="n">reject</span><span class="o">:</span><span class="n">err</span><span class="p">];</span>
-        <span class="k">else</span>
-            <span class="p">[</span><span class="n">deferred</span> <span class="n">resolve</span><span class="o">:</span><span class="n">img</span><span class="p">];</span>
-    <span class="p">}];</span>
-    <span class="k">return</span> <span class="n">deferred</span><span class="p">.</span><span class="n">promise</span><span class="p">;</span>
-<span class="p">}</span>
-</pre></div>
-
-<h1>
-<a name="adding-promisekit-to-someone-elses-pod" class="anchor" href="#adding-promisekit-to-someone-elses-pod"><span class="octicon octicon-link"></span></a>Adding PromiseKit to Someone Else’s Pod</h1>
+<h2>
+<a name="adding-promisekit-to-someone-elses-pod" class="anchor" href="#adding-promisekit-to-someone-elses-pod"><span class="octicon octicon-link"></span></a>Adding PromiseKit to Someone Else’s Pod</h2>
 
 <p>Firstly you should try submitting the above to the project itself. If they won’t add it then you'll need to make your own pod. Use the naming scheme: <code>ABCKitten+PromiseKit</code>.</p>
 
@@ -601,9 +637,11 @@
 
 <ul>
 <li>
-<a href="https://github.com/BoltsFramework/Bolts-iOS">Bolts</a> was the inspiration for PromiseKit. I thought that—finally—someone had written a decent Promises implementation for iOS. The lack of dedicated <code>catch</code> handler, the (objectively) ugly syntax and the overly complex design was a disappointment. To be fair Bolts is not a Promise implementation, it’s… something else. You may like it, and certainly it is backed by big names™. Fundamentally, Promise-type implementations are not hard to write, so you really are making a decision based on how flexible the API is while simulatenously producing readable, clean code. I have worked hard to make PromiseKit the best choice.</li>
+<a href="https://github.com/BoltsFramework/Bolts-iOS">Bolts</a> was the inspiration for PromiseKit. I thought that—finally—someone had written a decent Promises implementation for iOS. The lack of dedicated <code>catch</code> handler, the (objectively) ugly syntax and the overly complex design was a disappointment. To be fair Bolts is not a Promise implementation, it’s…something else. You may like it, and certainly it is backed by big names™. Fundamentally, Promise-type implementations are not hard to write, so really you’re making a decision based on how flexible the API is while simulatenously producing readable, clean code. I have worked hard to make PromiseKit the best choice.</li>
 <li>
-<a href="https://github.com/couchdeveloper/RXPromise">RXPromise</a> is an excellent Promise implementation that is mostly let down by syntax choices. By default thens are executed in background threads, which usually is inconvenient. <code>then</code> always return <code>id</code> and always take <code>id</code>, which makes code less elegant. There is no explicit <code>catch</code>, instead <code>then</code> always takes two blocks, the second being the error handler, which is ugly. The interface for <code>Promise</code> allows any caller to resolve it breaking encapsulation. Otherwise an excellent implementation.</li>
+<a href="https://github.com/couchdeveloper/RXPromise">RXPromise</a> is an excellent Promise implementation that is not quite perfect (IMHO). By default thens are executed in background threads, which usually is inconvenient. <code>then</code> always return <code>id</code> and always take <code>id</code>, which makes code less elegant. There is no explicit <code>catch</code>, instead <code>then</code> always takes two blocks, the second being the error handler, which is ugly. The interface for <code>Promise</code> allows any caller to resolve it breaking encapsulation. Otherwise an excellent implementation.</li>
+<li>
+<a href="https://github.com/Strilanc/ObjC-CollapsingFutures">CollapsingFutures</a> looks good, but is not thoroughly documented so a thorough review would require further experimentation.</li>
 <li><a href="http://cocoapods.org/?q=promise">Many others</a></li>
 </ul><p>PromiseKit is well tested, and inside apps on the store. It also is fully documented, even within Xcode (⌥ click any method).</p>
 
@@ -612,7 +650,38 @@
 
 <ul>
 <li>We are version 0.9 and thus reserve the right to remove/change API before 1.0. Probably we won’t; we’re just being prudent by stating this advisory.</li>
-<li>PromiseKit is not thread-safe. This is not intentional, we will fix that. However, in practice the only way to compromise PromiseKit is to keep a pointer to an unresolved Promise and use that from multiple threads. You can execute thens in many different contexts and the underlying immutability of Promises means PromiseKit is inherently thread-safe.</li>
+<li>PromiseKit is not thread-safe. This is not intentional, we will fix that. However, in practice the only way to compromise PromiseKit is to keep a pointer to an pending Promise and use that from multiple threads. You can execute thens in many different contexts and the underlying immutability of Promises means PromiseKit is inherently thread-safe.</li>
+<li>If you don't have at least one catch handler in your chain then errors are silently absorbed which may cause you confusion. We intend to log unhandled errors, (with an opt-in method to have them get thrown and thus crash your app in cases where that is desired).</li>
+</ul><h1>
+<a name="promisesa-compliance" class="anchor" href="#promisesa-compliance"><span class="octicon octicon-link"></span></a>Promises/A+ Compliance</h1>
+
+<p>PromiseKit is <a href="http://promisesaplus.com">compliant</a> excluding:</p>
+
+<ul>
+<li>Our <code>then</code> does not take a failure handler, instead we have a dedicated <code>catch</code>
+</li>
+</ul><p>If you find further non-compliance please open a <a href="https://github.com/mxcl/PromiseKit/issues/new">ticket</a>.</p>
+
+<h1>
+<a name="terminology" class="anchor" href="#terminology"><span class="octicon octicon-link"></span></a>Terminology</h1>
+
+<ul>
+<li>Promises start in a <strong>pending</strong> state.</li>
+<li>Promises <strong>resolve</strong> to become <strong>fulfilled</strong> or <strong>rejected</strong>.</li>
+</ul><h1>
+<a name="the-fine-print" class="anchor" href="#the-fine-print"><span class="octicon octicon-link"></span></a>The Fine Print</h1>
+
+<p>The fine print of PromiseKit is mostly exactly what you would expect, so don’t confuse yourself: only come back here when you find yourself curious about more advanced techniques.</p>
+
+<ul>
+<li>Returning a Promise as the value of a <code>then</code> (or <code>catch</code>) handler will cause any subsequent handlers to wait for that Promise to resolve.</li>
+<li>Returning an instance of <code>NSError</code> or throwing an exception within a then block will cause PromiseKit to bubble that object up to the nearest catch handler.</li>
+<li>
+<code>catch</code> handlers always are passed an <code>NSError</code> object.</li>
+<li>Returning something other than an <code>NSError</code> from a <code>catch</code> handler causes PromiseKit to consider the error “corrected”, and execution will continue at the next <code>then</code> handler using the object you returned as the input.</li>
+<li>Not returning from a <code>catch</code> handler (or returning nil) causes PromiseKit to consider the Promise complete. No further bubbling occurs.</li>
+<li>Nothing happens if you add a <code>then</code> to a failed Promise (unless you subsequently add a <code>catch</code> handler to the Promise returned from that <code>then</code>)</li>
+<li>Adding a <code>catch</code> handler to a failed Promise will execute that fail handler: this is converse to adding the same to a <strong>pending</strong> Promise that has a higher <code>catch</code> than the one you just added.</li>
 </ul>
       </section>
     </div>
